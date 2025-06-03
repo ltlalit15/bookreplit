@@ -2087,6 +2087,21 @@ export const UserDelete = async (req, res) => {
         const checkQuery = "SELECT * FROM users WHERE id = ?";
         const [existingUser] = await pool.query(checkQuery, [id]);
 
+        const checkQuerys = "DELETE FROM book WHERE user_id = ?";
+        await pool.query(checkQuerys, [id]);
+
+
+        const checkQueryss = "DELETE FROM audio_progress WHERE user_id = ?";
+        await pool.query(checkQueryss, [id]);
+
+
+            const checkQuerysss = "DELETE FROM book_test_results WHERE user_id = ?";
+        await pool.query(checkQuerysss, [id]);
+
+        
+
+
+
         if (existingUser.length === 0) {
             return res.status(404).json({ message: "No User found" });
         }
@@ -2104,7 +2119,6 @@ export const UserDelete = async (req, res) => {
         return res.status(500).json({ message: "Internal server error" });
     }
 };
-
 // getAllUsersWithPromo
 
 export const getAllUsersWithPromo = async (req, res) => {
