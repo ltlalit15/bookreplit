@@ -1,21 +1,6 @@
 import { JSONCookie } from 'cookie-parser';
 import { query } from 'express';
 import mysql from 'mysql2/promise';
-//export const pool =  mysql.createPool({
-//  host: 'localhost',
-//  port:3306,
-//  user: 'root',
-//  database: 'samrtlife',
-//});
-//(async () => {
-//    try {
-//      const connection = await pool.getConnection();
-//      console.log("✅ Successfully connected Local MySQL database");
-//      connection.release();
-//    } catch (error) {
-//      console.error("❌ Database connection error:", error);
-//    }
-//})();
 
  export const pool = mysql.createPool({
    host: "ballast.proxy.rlwy.net",            // ✅ Updated host
