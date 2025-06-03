@@ -12,6 +12,8 @@ import mysql from 'mysql2/promise';
    connectionLimit: 10,
    queueLimit: 0,
    connectTimeout: 10000, // 10 seconds timeout
+   enableKeepAlive: true,
+   keepAliveInitialDelay: 0,
  });
 
  // ✅ Check Connection
