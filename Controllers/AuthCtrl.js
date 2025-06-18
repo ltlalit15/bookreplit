@@ -341,7 +341,7 @@ export const signUp = async (req, res) => {
         let originalAmount = parseFloat(subscription[0].amount);
         let finalAmount = originalAmount;
         let discountApplied = 0;
-        let referredBy = "";
+        let referredBy = null;
         let commissionEarned = 0;
 
         // ✅ If promocode is provided, validate and apply discount
@@ -487,6 +487,8 @@ export const signUp = async (req, res) => {
         return res.status(500).json({ message: "Internal server error", error: error.message });
     }
 };
+
+
 
 
 
