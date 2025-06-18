@@ -1077,15 +1077,38 @@ export const login = async (req, res) => {
 };
 
 
+// export const logout = async (req, res) => {
+//     try {
+//         const { userId } = req.body; // Or get from token
+//         await pool.query("UPDATE users SET is_logged_in = ? WHERE id = ?", [false, userId]);
+//         return res.status(200).json({ message: "Logout successful" });
+//     } catch (error) {
+//         return res.status(500).json({ message: "Logout failed", error: error.message });
+//     }
+// };
+
+
+
+
 export const logout = async (req, res) => {
     try {
-        const { userId } = req.body; // Or get from token
-        await pool.query("UPDATE users SET is_logged_in = ? WHERE id = ?", [false, userId]);
+        const { userId } = req.body;
+        console.log("Logout request received for userId:", userId);
+
+        const [result] = await pool.query(
+            "UPDATE users SET is_logged_in = ? WHERE id = ?",
+            [0, userId]
+        );
+
+        console.log("Query result:", result);
+
         return res.status(200).json({ message: "Logout successful" });
     } catch (error) {
+        console.error("Logout error:", error.message);
         return res.status(500).json({ message: "Logout failed", error: error.message });
     }
 };
+
 
 
 // export const logout = async (req, res) => {
