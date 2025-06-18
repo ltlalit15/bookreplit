@@ -1,10 +1,7 @@
 import { pool } from "../Config/dbConnect.js";
-
-
 export const addempoyee = async (req, res) => {
     try {
         const { username, email, password } = req.body
-
         const existingstaff = await pool.query("SELECT email FROM empoyee WHERE email=?", email)
         if(!existingstaff){
             return res.status(403).json("staff already exist")
@@ -30,7 +27,5 @@ export const addempoyee = async (req, res) => {
     }  
 }
 export const getempoyee = async (req, res) => {
-
-
 }
 

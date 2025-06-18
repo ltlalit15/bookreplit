@@ -1,32 +1,23 @@
 import { pool } from "../Config/dbConnect.js";
-
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { generatetoken } from "../Config/jwt.js";
 import { v4 as uuidv4 } from "uuid";
 import { config } from "dotenv";
-
 import multer from "multer";
 import { fileURLToPath } from "url";
 import path from "path";
 import fs from "fs";
 import nodemailer from 'nodemailer';
-
-
 import imagekit from "../imagekit.js";
-
 import upload from "../Middlewares/upload.js";
 // import { log } from "console";
-
 // import B2 from 'backblaze-b2';
-
-
 // // Initialize Backblaze B2 with your credentials
 // const b2 = new B2({
 //     accountId: "bbced3e13c2a",  // Your Backblaze Account ID
 //     applicationKey: "005b8d86360b8f445124a1134353b1e96f59f332da",  // Your Backblaze Application Key
 // });
-
 // // Authorize with Backblaze B2
 // b2.authorize()
 //     .then(() => {
@@ -39,7 +30,6 @@ import upload from "../Middlewares/upload.js";
 // // Multer configuration for file uploads
 // const storage = multer.memoryStorage(); // Store files temporarily in memory
 // const upload = multer({ storage }).fields([{ name: 'image', maxCount: 1 }, { name: 'audio_book_url', maxCount: 1 }]);
-
 
 
 // // ✅ Fix `__dirname` for ES Module
@@ -351,7 +341,7 @@ export const signUp = async (req, res) => {
         let originalAmount = parseFloat(subscription[0].amount);
         let finalAmount = originalAmount;
         let discountApplied = 0;
-        let referredBy = null;
+        let referredBy = "";
         let commissionEarned = 0;
 
         // ✅ If promocode is provided, validate and apply discount
@@ -552,60 +542,144 @@ export const promocodeDiscount = async (req, res) => {
 };
 
 
+// export const getPromocodeReferById = async (req, res) => {
+//     try {
+//         const { id } = req.params;
+
+//         // Fetch user details by ID
+//         const [user] = await pool.query("SELECT id, promocode, email FROM users WHERE id = ? AND promocode IS NOT NULL", [id]);
+//         if (user.length === 0) {
+//             return res.status(404).json({ message: "User not found or no promocode assigned" });
+//         }
+
+//         // Get referral count
+//         const [referCount] = await pool.query("SELECT COUNT(*) AS count FROM users WHERE referred_by = ?", [id]);
+
+//         // Calculate total commission earned (20% of discount applied for referred users)
+//         const [commissionData] = await pool.query(`
+//             SELECT SUM(discount_applied * 0.20) AS total_commission 
+//             FROM subscriptions 
+//             WHERE referred_by = ?`,
+//             [id]
+//         );
+//         const totalCommission = commissionData[0].total_commission || 0;
+
+
+
+//         // 🆕 Referred users detailed info (email, plan_name, commission)
+//         const [referredUsers] = await pool.query(`
+//             SELECT u.email, u.timestamp, s.plan_name, (CAST(s.discount_applied AS DECIMAL(10,2)) * 0.20) AS commission ,
+//             DATE_FORMAT(u.timestamp, '%M') AS month
+//             FROM users u
+//             JOIN subscriptions s ON u.id = s.user_id
+//             WHERE u.referred_by = ?
+//         `, [id]);
+
+//         // 🔄 Month-wise commission summary
+//         const [monthlyCommission] = await pool.query(`
+//             SELECT 
+//                 DATE_FORMAT(s.start_date, '%Y-%m-%d') AS month,
+//                 SUM(CAST(s.discount_applied AS DECIMAL(10,2)) * 0.20) AS total_commission,
+//                 COUNT(*) AS total_referrals
+//             FROM subscriptions s
+//             WHERE s.referred_by = ?
+//             GROUP BY month
+//             ORDER BY month DESC
+//         `, [id]);
+
+//         return res.status(200).json({
+//             message: "User promo code referral count and commission fetched successfully.",
+//             data: {
+//                 id: user[0].id,
+//                 email: user[0].email,
+//                 promocode: user[0].promocode,
+//                 referCount: referCount[0].count,
+//                 timestamp: user[0].timestamp,
+
+//                 comitionErned: totalCommission,
+//                 referrals: referredUsers,
+//                 monthlySummary: monthlyCommission
+//             }
+//         });
+//     } catch (error) {
+//         console.error("getPromocodeReferById Error:", error);
+//         return res.status(500).json({ message: "Internal server error", error: error.message });
+//     }
+// };
+
+
 export const getPromocodeReferById = async (req, res) => {
     try {
         const { id } = req.params;
-
         // Fetch user details by ID
-        const [user] = await pool.query("SELECT id, promocode, email FROM users WHERE id = ? AND promocode IS NOT NULL", [id]);
+        const [user] = await pool.query(
+            "SELECT id, promocode, email, timestamp FROM users WHERE id = ? AND promocode IS NOT NULL",
+            [id]
+        );
         if (user.length === 0) {
             return res.status(404).json({ message: "User not found or no promocode assigned" });
         }
-
         // Get referral count
-        const [referCount] = await pool.query("SELECT COUNT(*) AS count FROM users WHERE referred_by = ?", [id]);
-
-        // Calculate total commission earned (20% of discount applied for referred users)
-        const [commissionData] = await pool.query(`
-            SELECT SUM(discount_applied * 0.20) AS total_commission 
-            FROM subscriptions 
-            WHERE referred_by = ?`,
+        const [referCount] = await pool.query(
+            "SELECT COUNT(*) AS count FROM users WHERE referred_by = ?",
             [id]
         );
+        // Total commission: use discount_applied, fallback to original_price
+        const [commissionData] = await pool.query(`
+            SELECT SUM(
+                CASE 
+                    WHEN discount_applied > 0 
+                        THEN CAST(discount_applied AS DECIMAL(10,2)) * 0.20
+                    ELSE CAST(original_price AS DECIMAL(10,2)) * 0.20
+                END
+            ) AS total_commission 
+            FROM subscriptions 
+            WHERE referred_by = ?
+        `, [id]);
         const totalCommission = commissionData[0].total_commission || 0;
-
-
-
-        // 🆕 Referred users detailed info (email, plan_name, commission)
+        // Referred users detail
         const [referredUsers] = await pool.query(`
-            SELECT u.email, u.timestamp, s.plan_name, (CAST(s.discount_applied AS DECIMAL(10,2)) * 0.20) AS commission ,
-            DATE_FORMAT(u.timestamp, '%M') AS month
+            SELECT 
+                u.email, 
+                u.timestamp, 
+                s.plan_name,
+                (
+                    CASE 
+                        WHEN s.discount_applied > 0 
+                            THEN CAST(s.discount_applied AS DECIMAL(10,2)) * 0.20
+                        ELSE CAST(s.original_price AS DECIMAL(10,2)) * 0.20
+                    END
+                ) AS commission,
+                DATE_FORMAT(u.timestamp, '%M') AS month
             FROM users u
             JOIN subscriptions s ON u.id = s.user_id
             WHERE u.referred_by = ?
         `, [id]);
-
-        // 🔄 Month-wise commission summary
+        // Monthly commission summary
         const [monthlyCommission] = await pool.query(`
             SELECT 
-                DATE_FORMAT(s.start_date, '%Y-%m-%d') AS month,
-                SUM(CAST(s.discount_applied AS DECIMAL(10,2)) * 0.20) AS total_commission,
+                DATE_FORMAT(s.start_date, '%Y-%m') AS month,
+                SUM(
+                    CASE 
+                        WHEN s.discount_applied > 0 
+                            THEN CAST(s.discount_applied AS DECIMAL(10,2)) * 0.20
+                        ELSE CAST(s.original_price AS DECIMAL(10,2)) * 0.20
+                    END
+                ) AS total_commission,
                 COUNT(*) AS total_referrals
             FROM subscriptions s
             WHERE s.referred_by = ?
             GROUP BY month
             ORDER BY month DESC
         `, [id]);
-
         return res.status(200).json({
             message: "User promo code referral count and commission fetched successfully.",
             data: {
                 id: user[0].id,
                 email: user[0].email,
                 promocode: user[0].promocode,
-                referCount: referCount[0].count,
                 timestamp: user[0].timestamp,
-
+                referCount: referCount[0].count,
                 comitionErned: totalCommission,
                 referrals: referredUsers,
                 monthlySummary: monthlyCommission
@@ -616,6 +690,10 @@ export const getPromocodeReferById = async (req, res) => {
         return res.status(500).json({ message: "Internal server error", error: error.message });
     }
 };
+
+
+
+
 
 
 
@@ -1430,9 +1508,291 @@ export const addBook = async (req, res) => {
 //     });
 // };
 
+// export const saveOrUpdateAudioProgress = async (req, res) => {
+//     try {
+//         const { user_id, book_id, progress } = req.body;
+
+//         const checkQuery = `
+//             SELECT progress FROM audio_progress 
+//             WHERE user_id = ? AND book_id = ?
+//         `;
+//         const [existingProgress] = await pool.query(checkQuery, [user_id, book_id]);
+
+//         if (existingProgress.length > 0) {
+//             const currentProgress = existingProgress[0].progress;
+
+//             // Only update if new progress is greater than existing
+//             if (progress > currentProgress) {
+//                 const updateQuery = `
+//                     UPDATE audio_progress 
+//                     SET progress = ?, updated_at = NOW()
+//                     WHERE user_id = ? AND book_id = ?
+//                 `;
+//                 await pool.query(updateQuery, [progress, user_id, book_id]);
+
+//                 return res.status(200).json({
+//                     message: "Audio progress updated successfully",
+//                     data: {
+//                         user_id,
+//                         book_id,
+//                         progress
+//                     }
+//                 });
+//             } else {
+//                 return res.status(200).json({
+//                     message: "New progress is less than or equal to existing. No update performed.",
+//                     data: {
+//                         user_id,
+//                         book_id,
+//                         progress: currentProgress
+//                     }
+//                 });
+//             }
+
+//         } else {
+//             // Insert new progress
+//             const insertQuery = `
+//                 INSERT INTO audio_progress (user_id, book_id, progress, updated_at)
+//                 VALUES (?, ?, ?, NOW())
+//             `;
+//             await pool.query(insertQuery, [user_id, book_id, progress]);
+
+//             return res.status(201).json({
+//                 message: "Audio progress saved successfully",
+//                 data: {
+//                     user_id,
+//                     book_id,
+//                     progress
+//                 }
+//             });
+//         }
+
+//     } catch (error) {
+//         return res.status(500).json({
+//             message: "Internal server error",
+//             error: error.message
+//         });
+//     }
+// };
+
+
+
+
+// export const saveOrUpdateAudioProgress = async (req, res) => {
+//     try {
+//         const { user_id, book_id, progress } = req.body;
+//         const progressValue = parseFloat(progress); // ✅ Convert string to number
+
+//         const checkQuery = `
+//             SELECT progress FROM audio_progress 
+//             WHERE user_id = ? AND book_id = ?
+//         `;
+//         const [existingProgress] = await pool.query(checkQuery, [user_id, book_id]);
+
+//         if (existingProgress.length > 0) {
+//             const currentProgress = parseFloat(existingProgress[0].progress); // 🔁 Make sure DB value is also float
+
+//             // Only update if new progress is greater than existing
+//             if (progressValue > currentProgress) {
+//                 const updateQuery = `
+//                     UPDATE audio_progress 
+//                     SET progress = ?, updated_at = NOW()
+//                     WHERE user_id = ? AND book_id = ?
+//                 `;
+//                 await pool.query(updateQuery, [progressValue, user_id, book_id]);
+
+//                 return res.status(200).json({
+//                     message: "Audio progress updated successfully",
+//                     data: {
+//                         user_id,
+//                         book_id,
+//                         progress: progressValue
+//                     }
+//                 });
+//             } else {
+//                 return res.status(200).json({
+//                     message: "New progress is less than or equal to existing. No update performed.",
+//                     data: {
+//                         user_id,
+//                         book_id,
+//                         progress: currentProgress
+//                     }
+//                 });
+//             }
+
+//         } else {
+//             // Insert new progress
+//             const insertQuery = `
+//                 INSERT INTO audio_progress (user_id, book_id, progress, updated_at)
+//                 VALUES (?, ?, ?, NOW())
+//             `;
+//             await pool.query(insertQuery, [user_id, book_id, progressValue]);
+
+//             return res.status(201).json({
+//                 message: "Audio progress saved successfully",
+//                 data: {
+//                     user_id,
+//                     book_id,
+//                     progress: progressValue
+//                 }
+//             });
+//         }
+
+//     } catch (error) {
+//         return res.status(500).json({
+//             message: "Internal server error",
+//             error: error.message
+//         });
+//     }
+// };
+
+
+
+// export const saveOrUpdateAudioProgress = async (req, res) => {
+//     try {
+//         const { user_id, book_id, progress } = req.body;
+//         const progressValue = parseFloat(progress); // ✅ Convert string to number
+
+//         const checkQuery = `
+//             SELECT progress FROM audio_progress 
+//             WHERE user_id = ? AND book_id = ?
+//         `;
+//         const [existingProgress] = await pool.query(checkQuery, [user_id, book_id]);
+
+//         if (existingProgress.length > 0) {
+//             const currentProgress = parseFloat(existingProgress[0].progress); // 🔁 Make sure DB value is also float
+
+//             // Only update if new progress is greater than existing
+//             if (progressValue > currentProgress) {
+//                 const updateQuery = `
+//                     UPDATE audio_progress 
+//                     SET progress = ?, updated_at = NOW()
+//                     WHERE user_id = ? AND book_id = ?
+//                 `;
+//                 await pool.query(updateQuery, [progressValue, user_id, book_id]);
+
+//                 return res.status(200).json({
+//                     message: "Audio progress updated successfully",
+//                     data: {
+//                         user_id,
+//                         book_id,
+//                         progress: progressValue
+//                     }
+//                 });
+//             } else {
+//                 return res.status(200).json({
+//                     message: "New progress is less than or equal to existing. No update performed.",
+//                     data: {
+//                         user_id,
+//                         book_id,
+//                         progress: currentProgress
+//                     }
+//                 });
+//             }
+
+//         } else {
+//             // Insert new progress
+//             const insertQuery = `
+//                 INSERT INTO audio_progress (user_id, book_id, progress, updated_at)
+//                 VALUES (?, ?, ?, NOW())
+//             `;
+//             await pool.query(insertQuery, [user_id, book_id, progressValue]);
+
+//             return res.status(201).json({
+//                 message: "Audio progress saved successfully",
+//                 data: {
+//                     user_id,
+//                     book_id,
+//                     progress: progressValue
+//                 }
+//             });
+//         }
+
+//     } catch (error) {
+//         return res.status(500).json({
+//             message: "Internal server error",
+//             error: error.message
+//         });
+//     }
+// };
+
+
+
+
+
+// export const saveOrUpdateAudioProgress = async (req, res) => {
+//     try {
+//         const { user_id, book_id, progress } = req.body;
+//         const progressValue = parseFloat(progress); // ✅ Convert string to number
+
+//         const checkQuery = `
+//             SELECT progress FROM audio_progress 
+//             WHERE user_id = ? AND book_id = ?
+//         `;
+//         const [existingProgress] = await pool.query(checkQuery, [user_id, book_id]);
+
+//         if (existingProgress.length > 0) {
+//             const currentProgress = parseFloat(existingProgress[0].progress); // 🔁 Make sure DB value is also float
+
+//             // Only update if new progress is greater than existing
+//             if (progressValue > currentProgress) {
+//                 const updateQuery = `
+//                     UPDATE audio_progress 
+//                     SET progress = ?, updated_at = NOW()
+//                     WHERE user_id = ? AND book_id = ?
+//                 `;
+//                 await pool.query(updateQuery, [progressValue, user_id, book_id]);
+
+//                 return res.status(200).json({
+//                     message: "Audio progress updated successfully",
+//                     data: {
+//                         user_id,
+//                         book_id,
+//                         progress: progressValue
+//                     }
+//                 });
+//             } else {
+//                 return res.status(200).json({
+//                     message: "New progress is less than or equal to existing. No update performed.",
+//                     data: {
+//                         user_id,
+//                         book_id,
+//                         progress: currentProgress
+//                     }
+//                 });
+//             }
+
+//         } else {
+//             // Insert new progress
+//             const insertQuery = `
+//                 INSERT INTO audio_progress (user_id, book_id, progress, updated_at)
+//                 VALUES (?, ?, ?, NOW())
+//             `;
+//             await pool.query(insertQuery, [user_id, book_id, progressValue]);
+
+//             return res.status(201).json({
+//                 message: "Audio progress saved successfully",
+//                 data: {
+//                     user_id,
+//                     book_id,
+//                     progress: progressValue
+//                 }
+//             });
+//         }
+
+//     } catch (error) {
+//         return res.status(500).json({
+//             message: "Internal server error",
+//             error: error.message
+//         });
+//     }
+// };
+
+
 export const saveOrUpdateAudioProgress = async (req, res) => {
     try {
         const { user_id, book_id, progress } = req.body;
+        const progressValue = parseFloat(progress); // Convert to number
 
         const checkQuery = `
             SELECT progress FROM audio_progress 
@@ -1441,28 +1801,28 @@ export const saveOrUpdateAudioProgress = async (req, res) => {
         const [existingProgress] = await pool.query(checkQuery, [user_id, book_id]);
 
         if (existingProgress.length > 0) {
-            const currentProgress = existingProgress[0].progress;
+            const currentProgress = parseFloat(existingProgress[0].progress);
 
-            // Only update if new progress is greater than existing
-            if (progress > currentProgress) {
+            // ✅ Update if new progress is different (not equal)
+            if (progressValue !== currentProgress) {
                 const updateQuery = `
                     UPDATE audio_progress 
                     SET progress = ?, updated_at = NOW()
                     WHERE user_id = ? AND book_id = ?
                 `;
-                await pool.query(updateQuery, [progress, user_id, book_id]);
+                await pool.query(updateQuery, [progressValue, user_id, book_id]);
 
                 return res.status(200).json({
                     message: "Audio progress updated successfully",
                     data: {
                         user_id,
                         book_id,
-                        progress
+                        progress: progressValue
                     }
                 });
             } else {
                 return res.status(200).json({
-                    message: "New progress is less than or equal to existing. No update performed.",
+                    message: "Progress value is the same as existing. No update performed.",
                     data: {
                         user_id,
                         book_id,
@@ -1472,19 +1832,19 @@ export const saveOrUpdateAudioProgress = async (req, res) => {
             }
 
         } else {
-            // Insert new progress
+            // First time insert
             const insertQuery = `
                 INSERT INTO audio_progress (user_id, book_id, progress, updated_at)
                 VALUES (?, ?, ?, NOW())
             `;
-            await pool.query(insertQuery, [user_id, book_id, progress]);
+            await pool.query(insertQuery, [user_id, book_id, progressValue]);
 
             return res.status(201).json({
                 message: "Audio progress saved successfully",
                 data: {
                     user_id,
                     book_id,
-                    progress
+                    progress: progressValue
                 }
             });
         }
@@ -1496,6 +1856,10 @@ export const saveOrUpdateAudioProgress = async (req, res) => {
         });
     }
 };
+
+
+
+
 
 
 export const getAudioProgress = async (req, res) => {
@@ -1512,18 +1876,21 @@ export const getAudioProgress = async (req, res) => {
         `;
         const [result] = await pool.query(query, [user_id, book_id]);
 
-        if (result.length > 0) {
-            const progress = result[0].progress;
-            const status = progress > 90 ? "complete" : "incomplete";
+      if (result.length > 0) {
+    const progress = result[0].progress;
+    const status = progress >= 100 ? "complete" : "incomplete";
 
-            return res.status(200).json({
-                message: progress > 95 ? "Audio completed listening" : "Audio progress fetched successfully",
-                data: {
-                    progress,
-                    status
-                }
-            });
-        } else {
+    
+
+    return res.status(200).json({
+        message: progress >= 100 ? "Audio completed listening" : "Audio progress fetched successfully",
+        data: {
+            progress,
+            status
+        }
+
+    });
+} else {
             return res.status(404).json({ message: "No audio progress found for this user and book" });
         }
 
@@ -2095,10 +2462,10 @@ export const UserDelete = async (req, res) => {
         await pool.query(checkQueryss, [id]);
 
 
-            const checkQuerysss = "DELETE FROM book_test_results WHERE user_id = ?";
+        const checkQuerysss = "DELETE FROM book_test_results WHERE user_id = ?";
         await pool.query(checkQuerysss, [id]);
 
-        
+
 
 
 
@@ -2119,6 +2486,7 @@ export const UserDelete = async (req, res) => {
         return res.status(500).json({ message: "Internal server error" });
     }
 };
+
 // getAllUsersWithPromo
 
 export const getAllUsersWithPromo = async (req, res) => {
@@ -2791,11 +3159,6 @@ export const submittest = async (req, res) => {
     }
 };
 
-
-
-
-
-
 export const getbyidtest = async (req, res) => {
     try {
         const { id } = req.params;
@@ -2816,8 +3179,6 @@ export const getbyidtest = async (req, res) => {
 
     }
 }
-
-
 
 // export const userbyid = async (req, res) => {
 //     try {
@@ -3115,31 +3476,35 @@ export const userbyid = async (req, res) => {
 
 export const GetCompletedBooks = async (req, res) => {
     try {
-        const query =
-            `SELECT 
-                btr.id,
-                btr.user_id,
+       
+            const query = `
+            SELECT 
+                COALESCE(btr.id, 0) AS test_id,
+                ap.user_id,
                 COALESCE(u.firstname, '') AS firstname,
                 COALESCE(u.email, '') AS email,
-                btr.book_id,
+                ap.book_id,
                 COALESCE(b.book_name, '') AS book_name,
                 COALESCE(b.image, '') AS image,
-                btr.correct_answers,
-                btr.total_questions,
-                btr.created_at AS test_date,
+                COALESCE(btr.correct_answers, 0) AS correct_answers,
+                COALESCE(btr.total_questions, 0) AS total_questions,
+                COALESCE(btr.status, '') AS test_status,
+                ap.updated_at AS test_date,
                 COALESCE(ap.progress, 0) AS listening_progress,
-                ROUND((btr.correct_answers / btr.total_questions) * 100, 2) AS correct_percentage,
+                ROUND((COALESCE(btr.correct_answers, 0) / NULLIF(btr.total_questions, 0)) * 100, 2) AS correct_percentage,
                 CASE
-                    WHEN (btr.correct_answers / btr.total_questions) * 100 = 100 THEN 'Completed Successfully'
-                    WHEN (btr.correct_answers / btr.total_questions) * 100 >= 80 THEN 'Completed'
-                    ELSE 'Incompleted'
+                    WHEN ap.progress < 100 THEN 'Incomplete'
+                    WHEN btr.correct_answers IS NULL OR btr.total_questions = 0 THEN 'Completed'
+                    WHEN (btr.correct_answers / btr.total_questions) * 100 >= 80 THEN 'Completed Successfully'
+                    ELSE 'Completed'
                 END AS status
-            FROM book_test_results btr
-            LEFT JOIN users u ON btr.user_id = u.id
-            LEFT JOIN book b ON btr.book_id = b.id
-            LEFT JOIN audio_progress ap ON ap.user_id = btr.user_id AND ap.book_id = btr.book_id
-            WHERE (btr.correct_answers / btr.total_questions) * 100 >= 80
-            ORDER BY btr.created_at DESC`;
+            FROM audio_progress ap
+            LEFT JOIN book_test_results btr ON ap.user_id = btr.user_id AND ap.book_id = btr.book_id
+            LEFT JOIN users u ON ap.user_id = u.id
+            LEFT JOIN book b ON ap.book_id = b.id
+            ORDER BY ap.updated_at DESC
+        `;
+
 
         const [books] = await pool.query(query);
 
@@ -3161,61 +3526,163 @@ export const GetCompletedBooks = async (req, res) => {
 };
 
 
+// export const GetCompletedBooks = async (req, res) => {
+//     try {
+//         const query =
+//             `SELECT 
+//     btr.id,
+//     btr.user_id,
+//     COALESCE(u.firstname, '') AS firstname,
+//     COALESCE(u.email, '') AS email,
+//     btr.book_id,
+//     COALESCE(b.book_name, '') AS book_name,
+//     COALESCE(b.image, '') AS image,
+//     btr.correct_answers,
+//     btr.total_questions,
+//     btr.created_at AS test_date,
+//     COALESCE(ap.progress, 0) AS listening_progress,
+//     ROUND((btr.correct_answers / btr.total_questions) * 100, 2) AS correct_percentage,
+//     CASE
+//         WHEN COALESCE(ap.progress, 0) < 100 THEN 'Incomplete'
+//         WHEN btr.total_questions IS NULL OR btr.total_questions = 0 THEN 'Incomplete'
+//         WHEN (btr.correct_answers / btr.total_questions) * 100 >= 80 THEN 'Completed Successfully'
+//         ELSE 'Complete'
+//     END AS status
+// FROM book_test_results btr
+// LEFT JOIN users u ON btr.user_id = u.id
+// LEFT JOIN book b ON btr.book_id = b.id
+// LEFT JOIN audio_progress ap ON ap.user_id = btr.user_id AND ap.book_id = btr.book_id
+// WHERE (btr.correct_answers / btr.total_questions) * 100 >= 80
+// ORDER BY btr.created_at DESC;`;
+//         const [books] = await pool.query(query);
+//         if (!books.length) {
+//             return res.status(404).json({ message: "No Completed Books found" });
+//         }
+//         res.status(200).json({
+//             message: "Completed Books fetched successfully",
+//             data: books
+//         });
+//     } catch (err) {
+//         console.error("❌ Error fetching completed books:", err);
+//         res.status(500).json({
+//             message: "Internal server error",
+//             error: err.message
+//         });
+//     }
+// };
 
 
 
+
+// export const GetCompletedBooksByUserId = async (req, res) => {
+//     try {
+//         const { id } = req.params;  // Extract id from request parameters
+//         console.log("Received userId:", id);
+//         if (!id) {
+//             return res.status(400).json({ message: "User ID is required" });
+//         }
+//         const mysqlQuery = `SELECT 
+//         btr.id,
+//         btr.user_id,
+//         COALESCE(u.firstname, '') AS firstname,
+//         COALESCE(u.email, '') AS email,
+//         btr.book_id,
+//         COALESCE(b.book_name, '') AS book_name,
+//         COALESCE(b.image, '') AS image,
+//         btr.correct_answers,
+//         btr.total_questions,
+//         btr.status,
+//         btr.created_at AS test_date,
+//         COALESCE(ap.progress, 0) AS listening_progress,
+//         ROUND((btr.correct_answers / btr.total_questions) * 100, 2) AS correct_percentage,
+// CASE
+//             WHEN ap.progress < 100 THEN 'Incomplete'
+//             WHEN btr.correct_answers IS NULL OR btr.total_questions = 0 THEN 'Completed'
+//             WHEN (btr.correct_answers / btr.total_questions) * 100 >= 80 THEN 'Completed Successfully'
+//             ELSE 'Completed'
+//         END AS status
+//     FROM book_test_results btr
+//     LEFT JOIN users u ON btr.user_id = u.id
+//     LEFT JOIN book b ON btr.book_id = b.id
+//     LEFT JOIN audio_progress ap ON ap.user_id = btr.user_id AND ap.book_id = btr.book_id
+//     WHERE btr.user_id = ? AND btr.status IN ('Completed', 'Completed Successfully')
+//     ORDER BY btr.created_at DESC
+// `;
+//         const [result] = await pool.query(mysqlQuery, [parseInt(id)]);  // Ensure id is an integer
+//         console.log("Query Result Length:", result.length);
+//         console.log("Query Result:", JSON.stringify(result, null, 2));
+//         if (result.length > 0) {
+//             return res.status(200).json({
+//                 message: "Completed Books fetched successfully",
+//                 data: result
+//             });
+//         } else {
+//             return res.status(404).json({ message: "No Completed Books found for this user" });
+//         }
+//     } catch (error) {
+//         console.error("❌ Error:", error);
+//         return res.status(500).json({ message: "Internal server error", error: error.message });
+//     }
+// };
 
 
 export const GetCompletedBooksByUserId = async (req, res) => {
     try {
-        const { id } = req.params;  // Extract id from request parameters
+        const { id } = req.params;
         console.log("Received userId:", id);
+
         if (!id) {
             return res.status(400).json({ message: "User ID is required" });
         }
+
         const mysqlQuery = `
-
-           SELECT 
-        btr.id,
-        btr.user_id,
-        COALESCE(u.firstname, '') AS firstname,
-        COALESCE(u.email, '') AS email,
-        btr.book_id,
-        COALESCE(b.book_name, '') AS book_name,
-        COALESCE(b.image, '') AS image,
-        btr.correct_answers,
-        btr.total_questions,
-        btr.status,
-        btr.created_at AS test_date,
-        COALESCE(ap.progress, 0) AS listening_progress,
-        ROUND((btr.correct_answers / btr.total_questions) * 100, 2) AS correct_percentage
-    FROM book_test_results btr
-    LEFT JOIN users u ON btr.user_id = u.id
-    LEFT JOIN book b ON btr.book_id = b.id
-    LEFT JOIN audio_progress ap ON ap.user_id = btr.user_id AND ap.book_id = btr.book_id
-    WHERE btr.user_id = ? AND btr.status IN ('Completed', 'Completed Successfully')
-    ORDER BY btr.created_at DESC
-
-
-
-
+            SELECT 
+                COALESCE(btr.id, 0) AS test_id,
+                ap.user_id,
+                COALESCE(u.firstname, '') AS firstname,
+                COALESCE(u.email, '') AS email,
+                ap.book_id,
+                COALESCE(b.book_name, '') AS book_name,
+                COALESCE(b.image, '') AS image,
+                COALESCE(btr.correct_answers, 0) AS correct_answers,
+                COALESCE(btr.total_questions, 0) AS total_questions,
+                COALESCE(btr.status, '') AS test_status,
+                ap.updated_at AS test_date,
+                COALESCE(ap.progress, 0) AS listening_progress,
+                ROUND((COALESCE(btr.correct_answers, 0) / NULLIF(btr.total_questions, 0)) * 100, 2) AS correct_percentage,
+                CASE
+                    WHEN ap.progress < 100 THEN 'Incomplete'
+                    WHEN btr.correct_answers IS NULL OR btr.total_questions = 0 THEN 'Completed'
+                    WHEN (btr.correct_answers / btr.total_questions) * 100 >= 80 THEN 'Completed Successfully'
+                    ELSE 'Completed'
+                END AS status
+            FROM audio_progress ap
+            LEFT JOIN book_test_results btr ON ap.user_id = btr.user_id AND ap.book_id = btr.book_id
+            LEFT JOIN users u ON ap.user_id = u.id
+            LEFT JOIN book b ON ap.book_id = b.id
+            WHERE ap.user_id = ?
+            ORDER BY ap.updated_at DESC
         `;
-        const [result] = await pool.query(mysqlQuery, [parseInt(id)]);  // Ensure id is an integer
+
+        const [result] = await pool.query(mysqlQuery, [parseInt(id)]);
         console.log("Query Result Length:", result.length);
         console.log("Query Result:", JSON.stringify(result, null, 2));
+
         if (result.length > 0) {
             return res.status(200).json({
-                message: "Completed Books fetched successfully",
+                message: "Completed/In-progress Books fetched successfully",
                 data: result
             });
         } else {
-            return res.status(404).json({ message: "No Completed Books found for this user" });
+            return res.status(404).json({ message: "No audio progress found for this user" });
         }
+
     } catch (error) {
         console.error("❌ Error:", error);
         return res.status(500).json({ message: "Internal server error", error: error.message });
     }
 };
+
 
 
 export const startChallenge = async (req, res) => {
@@ -3247,24 +3714,20 @@ export const startChallenge = async (req, res) => {
 //         // 80% pass criteria
 //         const requiredCorrect = Math.ceil(total_questions * 0.8);
 //         const status = correct_answers >= requiredCorrect ? "completed" : "not completed";
-
 //         // ✅ Check if same user already attempted any book today
 //         const [existingTest] = await pool.query(
 //             `SELECT id FROM book_test_results 
 //              WHERE user_id = ? AND DATE(created_at) = CURDATE()`,
 //             [user_id]
 //         );
-
 //         if (existingTest.length > 0) {
 //             return res.status(400).json({ message: "You can attempt only one book per day." });
 //         }
-
 //         // ✅ Insert new test record
 //         await pool.query(
 //             "INSERT INTO book_test_results (user_id, book_id, correct_answers, total_questions, status) VALUES (?, ?, ?, ?, ?)",
 //             [user_id, book_id, correct_answers, total_questions, status]
 //         );
-
 //         if (status === "completed") {
 //             // ✅ Progress tracking update karo
 //             await pool.query(
@@ -3272,7 +3735,6 @@ export const startChallenge = async (req, res) => {
 //                 [user_id]
 //             );
 //         }
-
 //         return res.status(200).json({
 //             message: status === "completed" ? "Book marked as completed!" : "Try again!",
 //             correct_answers,
@@ -3458,11 +3920,8 @@ export const gatallUserChallengeProgreses = async (req, res) => {
             // ✅ Only count books passed in first attempt for challenge progress
             const booksCompleted = books.filter(book => book.first_attempt_pass === 1).length;
             const remainingBooks = Math.max(30 - booksCompleted, 0); // Ensure it never goes negative
-
             // ✅ Determine overall book status
             const bookStatusFor1Month = remainingBooks === 0 ? "Completed Successfully" : "incompleted";
-
-
             return {
                 id: user.user_id,
                 books_completed: booksCompleted,
@@ -3479,7 +3938,6 @@ export const gatallUserChallengeProgreses = async (req, res) => {
                 book_read_list: books // ✅ List will include all completed books
             };
         }));
-
         return res.status(200).json({
             message: "User challenge progress fetched successfully",
             data: userChallengeData
@@ -3489,11 +3947,6 @@ export const gatallUserChallengeProgreses = async (req, res) => {
         return res.status(500).json({ message: "Internal server error", error: error.message });
     }
 };
-
-
-
-
-
 
 
 //old code
@@ -3839,11 +4292,11 @@ export const getUserChallengeProgress = async (req, res) => {
              WHERE u.id = ?`,
             [user_id, user_id]
         );
-        
+
         if (progress.length === 0 || !progress[0]?.challenge_start_date) {
             return res.status(404).json({ message: "User has not started the challenge yet." });
         }
-        
+
         const challengeStartDate = progress[0].challenge_start_date;
         const totalElapsedDays = Math.floor((new Date() - new Date(challengeStartDate)) / (1000 * 60 * 60 * 24));
         const elapsedDays = Math.min(totalElapsedDays, 30);
@@ -4204,11 +4657,9 @@ export const updateReviewStatus = async (req, res) => {
 export const saveUserVisited = async (req, res) => {
     try {
         const { Uemail } = req.body;
-
         if (!Uemail) {
             return res.status(400).json({ message: "Email is required" });
         }
-
         // Check if email already exists
         const checkQuery = "SELECT * FROM visiteduser WHERE Uemail = ?";
         const [existingUser] = await pool.query(checkQuery, [Uemail]);
@@ -4216,11 +4667,9 @@ export const saveUserVisited = async (req, res) => {
         if (existingUser.length > 0) {
             return res.status(200).json({ message: "User already exists" });
         }
-
         // Insert new user with purchaseStatus = false
         const insertQuery = "INSERT INTO visiteduser (Uemail, purchaseStatus) VALUES (?, ?)";
         const [result] = await pool.query(insertQuery, [Uemail, false]);
-
         return res.status(201).json({
             message: "User visit saved successfully",
             data: {
@@ -4328,7 +4777,6 @@ export const updateVisitedUsersStatus = async (req, res) => {
         // Get all visited users
         const getVisitedUsersQuery = "SELECT * FROM visiteduser";
         const [visitedUsers] = await pool.query(getVisitedUsersQuery);
-
         for (const user of visitedUsers) {
             const checkUserQuery = "SELECT * FROM users WHERE email = ?";
             const [existingUsers] = await pool.query(checkUserQuery, [user.Uemail]);
@@ -4339,10 +4787,8 @@ export const updateVisitedUsersStatus = async (req, res) => {
                 await pool.query(updateStatusQuery, [user.Uemail]);
             }
         }
-
         // Get all updated visited users
         const [updatedVisitedUsers] = await pool.query("SELECT * FROM visiteduser");
-
         // Add userType based on purchaseStatus
         const usersWithType = updatedVisitedUsers.map(user => ({
             ...user,
@@ -4388,27 +4834,11 @@ export const updateUserSubscription = async (req, res) => {
             status: "true",
             message: "User subscription updated successfully"
         });
-
     } catch (error) {
         console.error("Error updating user subscription:", error);
         res.status(500).json({ status: "false", message: "Internal server error" });
     }
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
