@@ -3580,6 +3580,63 @@ export const GetCompletedBooks = async (req, res) => {
 // };
 
 
+// export const GetCompletedBooksByUserId = async (req, res) => {
+//     try {
+//         const { id } = req.params;
+//         console.log("Received userId:", id);
+
+//         if (!id) {
+//             return res.status(400).json({ message: "User ID is required" });
+//         }
+
+//         const mysqlQuery = `
+//             SELECT 
+//                 COALESCE(btr.id, 0) AS test_id,
+//                 ap.user_id,
+//                 COALESCE(u.firstname, '') AS firstname,
+//                 COALESCE(u.email, '') AS email,
+//                 ap.book_id,
+//                 COALESCE(b.book_name, '') AS book_name,
+//                 COALESCE(b.image, '') AS image,
+//                 COALESCE(btr.correct_answers, 0) AS correct_answers,
+//                 COALESCE(btr.total_questions, 0) AS total_questions,
+//                 COALESCE(btr.status, '') AS test_status,
+//                 ap.updated_at AS test_date,
+//                 COALESCE(ap.progress, 0) AS listening_progress,
+//                 ROUND((COALESCE(btr.correct_answers, 0) / NULLIF(btr.total_questions, 0)) * 100, 2) AS correct_percentage,
+//                 CASE
+//                     WHEN ap.progress < 100 THEN 'Incomplete'
+//                     WHEN btr.correct_answers IS NULL OR btr.total_questions = 0 THEN 'Completed'
+//                     WHEN (btr.correct_answers / btr.total_questions) * 100 >= 80 THEN 'Completed Successfully'
+//                     ELSE 'Completed'
+//                 END AS status
+//             FROM audio_progress ap
+//             LEFT JOIN book_test_results btr ON ap.user_id = btr.user_id AND ap.book_id = btr.book_id
+//             LEFT JOIN users u ON ap.user_id = u.id
+//             LEFT JOIN book b ON ap.book_id = b.id
+//             WHERE ap.user_id = ?
+//             ORDER BY ap.updated_at DESC
+//         `;
+//         const [result] = await pool.query(mysqlQuery, [parseInt(id)]);
+//         console.log("Query Result Length:", result.length);
+//         console.log("Query Result:", JSON.stringify(result, null, 2));
+
+//         if (result.length > 0) {
+//             return res.status(200).json({
+//                 message: "Completed/In-progress Books fetched successfully",
+//                 data: result
+//             });
+//         } else {
+//             return res.status(404).json({ message: "No audio progress found for this user" });
+//         }
+//     } catch (error) {
+//         console.error("❌ Error:", error);
+//         return res.status(500).json({ message: "Internal server error", error: error.message });
+//     }
+// };
+
+
+
 export const GetCompletedBooksByUserId = async (req, res) => {
     try {
         const { id } = req.params;
@@ -3611,12 +3668,21 @@ export const GetCompletedBooksByUserId = async (req, res) => {
                     ELSE 'Completed'
                 END AS status
             FROM audio_progress ap
-            LEFT JOIN book_test_results btr ON ap.user_id = btr.user_id AND ap.book_id = btr.book_id
+            LEFT JOIN (
+                SELECT b1.*
+                FROM book_test_results b1
+                INNER JOIN (
+                    SELECT user_id, book_id, MAX(id) AS max_id
+                    FROM book_test_results
+                    GROUP BY user_id, book_id
+                ) latest ON b1.id = latest.max_id
+            ) btr ON ap.user_id = btr.user_id AND ap.book_id = btr.book_id
             LEFT JOIN users u ON ap.user_id = u.id
             LEFT JOIN book b ON ap.book_id = b.id
             WHERE ap.user_id = ?
             ORDER BY ap.updated_at DESC
         `;
+
         const [result] = await pool.query(mysqlQuery, [parseInt(id)]);
         console.log("Query Result Length:", result.length);
         console.log("Query Result:", JSON.stringify(result, null, 2));
@@ -3629,6 +3695,7 @@ export const GetCompletedBooksByUserId = async (req, res) => {
         } else {
             return res.status(404).json({ message: "No audio progress found for this user" });
         }
+
     } catch (error) {
         console.error("❌ Error:", error);
         return res.status(500).json({ message: "Internal server error", error: error.message });
