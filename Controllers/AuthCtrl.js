@@ -1694,6 +1694,75 @@ export const addBook = async (req, res) => {
 
 
 
+// export const saveOrUpdateAudioProgress = async (req, res) => {
+//     try {
+//         const { user_id, book_id, progress } = req.body;
+//         const progressValue = parseFloat(progress); // Convert to number
+
+//         const checkQuery = `
+//             SELECT progress FROM audio_progress 
+//             WHERE user_id = ? AND book_id = ?
+//         `;
+//         const [existingProgress] = await pool.query(checkQuery, [user_id, book_id]);
+
+//         if (existingProgress.length > 0) {
+//             const currentProgress = parseFloat(existingProgress[0].progress);
+
+//             // ✅ Update if new progress is different (not equal)
+//             if (progressValue !== currentProgress) {
+//                 const updateQuery = `
+//                     UPDATE audio_progress 
+//                     SET progress = ?, updated_at = NOW()
+//                     WHERE user_id = ? AND book_id = ?
+//                 `;
+//                 await pool.query(updateQuery, [progressValue, user_id, book_id]);
+
+//                 return res.status(200).json({
+//                     message: "Audio progress updated successfully",
+//                     data: {
+//                         user_id,
+//                         book_id,
+//                         progress: progressValue
+//                     }
+//                 });
+//             } else {
+//                 return res.status(200).json({
+//                     message: "Progress value is the same as existing. No update performed.",
+//                     data: {
+//                         user_id,
+//                         book_id,
+//                         progress: currentProgress
+//                     }
+//                 });
+//             }
+
+//         } else {
+//             // First time insert
+//             const insertQuery = `
+//                 INSERT INTO audio_progress (user_id, book_id, progress, updated_at)
+//                 VALUES (?, ?, ?, NOW())
+//             `;
+//             await pool.query(insertQuery, [user_id, book_id, progressValue]);
+
+//             return res.status(201).json({
+//                 message: "Audio progress saved successfully",
+//                 data: {
+//                     user_id,
+//                     book_id,
+//                     progress: progressValue
+//                 }
+//             });
+//         }
+
+//     } catch (error) {
+//         return res.status(500).json({
+//             message: "Internal server error",
+//             error: error.message
+//         });
+//     }
+// };
+
+
 export const saveOrUpdateAudioProgress = async (req, res) => {
     try {
         const { user_id, book_id, progress } = req.body;
@@ -1761,7 +1830,6 @@ export const saveOrUpdateAudioProgress = async (req, res) => {
         });
     }
 };
-
 
 
 
