@@ -2,11 +2,11 @@ import { JSONCookie } from 'cookie-parser';
 import { query } from 'express';
 import mysql from 'mysql2/promise';
 export const pool = mysql.createPool({
-  host: "localhost",      // Updated Host
-  port: 3306,                         // Updated Port
-  user: "root",                       // Username
-  password: "", // Updated Password
-  database: "samrtlife",           // Database Name
+  host: "ballast.proxy.rlwy.net",  // Updated Host
+  port: 59527,                     // Updated Port
+  user: "root",                    // Username
+  password: "uylgqtLXeChwfiWSXdIlEQdoCnIUIzxp", // Updated Password
+  database: "railway",              // Database Name
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
