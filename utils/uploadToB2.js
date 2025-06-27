@@ -35,7 +35,7 @@ export const uploadToB2 = async (fileBuffer, originalName, folder = '') => {
     });
 
     // ✅ Return public URL
-    return `https://f000.backblazeb2.com/file/${bucketName}/${fileName}`;
+    return `https://f005.backblazeb2.com/file/${bucketName}/${fileName}`;
   } catch (error) {
     console.error("❌ uploadToB2 error:", error?.response?.data || error.message);
     throw new Error("File upload to Backblaze B2 failed");
