@@ -2109,54 +2109,36 @@ export const getBookByid = async (req, res) => {
 
 //  backblaze code
 export const editBook = async (req, res) => {
-    upload.fields([{ name: "image", maxCount: 1 }, { name: "audio_book_url", maxCount: 1 }])(req, res, async (err) => {
-        if (err) {
-            return res.status(500).json({ message: "File upload failed", error: err.message });
-        }
-        try {
-            const { id } = req.params;
-            const { category_id, book_name, description, status, author, flip_book_url, question } = req.body;
-            console.log("editBook", req.body);
+  upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "audio_book_url", maxCount: 1 }
+  ])(req, res, async (err) => {
+    if (err) {
+      return res.status(500).json({ message: "File upload failed", error: err.message });
+    }
 
-            const statusValue = status || "not completed";
-            const categoryIdNum = parseInt(category_id, 10);
+    try {
+      const { id } = req.params;
+      const {
+        category_id,
+        book_name,
+        description,
+        status,
+        author,
+        flip_book_url,
+        question
+      } = req.body;
 
-            let imageUrl = req.body.image || "";
-            let audioUrl = req.body.audio_book_url || "";
+      console.log("editBook", req.body);
 
-            // ✅ Upload new image to ImageKit (if provided)
-            // if (req.files["image"]?.length) {
-            //     try {
-            //         const uploadResponse = await imagekit.upload({
-            //             file: req.files["image"][0].buffer,
-            //             fileName: book_image_${Date.now()},
-            //             folder: "books"
-            //         });
-            //         imageUrl = uploadResponse.url;
-            //     } catch (error) {
-            //         console.error("Image upload failed:", error);
-            //         return res.status(500).json({ message: "Image upload failed", error: error.message });
-            //     }
-            // }
+      const statusValue = status || "not completed";
+      const categoryIdNum = parseInt(category_id, 10);
 
-            // // ✅ Upload new audio to ImageKit (if provided)
-            // if (req.files["audio_book_url"]?.length) {
-            //     try {
-            //         const uploadResponse = await imagekit.upload({
-            //             file: req.files["audio_book_url"][0].buffer,
-            //             fileName: book_audio_${Date.now()},
-            //             folder: "books/audio"
-            //         });
-            //         audioUrl = uploadResponse.url;
-            //     } catch (error) {
-            //         console.error("Audio upload failed:", error);
-            //         return res.status(500).json({ message: "Audio upload failed", error: error.message });
-            //     }
-            // }
+      let imageUrl = req.body.image || "";
+      let audioUrl = req.body.audio_book_url || "";
 
-
-
-              if (req.files["image"]?.length) {
+      // ✅ Upload image to B2 if provided
+      if (req.files["image"]?.length) {
         try {
           const fileBuffer = req.files["image"][0].buffer;
           const originalName = req.files["image"][0].originalname;
@@ -2167,7 +2149,7 @@ export const editBook = async (req, res) => {
         }
       }
 
-      // ✅ Upload new audio to Backblaze B2 (if provided)
+      // ✅ Upload audio to B2 if provided
       if (req.files["audio_book_url"]?.length) {
         try {
           const fileBuffer = req.files["audio_book_url"][0].buffer;
@@ -2179,72 +2161,108 @@ export const editBook = async (req, res) => {
         }
       }
 
+      // ✅ Update book data in MySQL
+      await pool.query(
+        `UPDATE book SET 
+          category_id = ?, 
+          book_name = ?, 
+          description = ?, 
+          status = ?, 
+          image = ?, 
+          audio_book_url = ?, 
+          flip_book_url = ?, 
+          author = ? 
+        WHERE id = ?`,
+        [
+          categoryIdNum,
+          book_name,
+          description,
+          statusValue,
+          imageUrl,
+          audioUrl,
+          flip_book_url,
+          author,
+          id
+        ]
+      );
 
-            // ✅ Update book in DB
-            await pool.query(
-                "UPDATE book SET category_id = ?, book_name = ?, description = ?, status = ?, image = ?, audio_book_url = ?, flip_book_url = ?, author = ? WHERE id = ?",
-                [categoryIdNum, book_name, description, statusValue, imageUrl, audioUrl, flip_book_url, author, id]
-            );
-
-            // ✅ Update existing questions
-            if (question) {
-                const parsedQuestions = JSON.parse(question);
-                if (Array.isArray(parsedQuestions)) {
-                    await Promise.all(parsedQuestions.map(async (q) => {
-                        const { id: questionId, question_text, options, correct_option } = q;
-                        if (!questionId || !options || options.length !== 4) {
-                            console.warn(⚠ Skipping invalid question:, q);
-                            return null;
-                        }
-                        const optionTexts = options.map(option => option.text);
-
-                        await pool.query(
-                            "UPDATE bookquestions SET question = ?, option_1 = ?, option_2 = ?, option_3 = ?, option_4 = ?, correct_option = ? WHERE id = ? AND book_id = ?",
-                            [question_text, optionTexts[0], optionTexts[1], optionTexts[2], optionTexts[3], parseInt(correct_option, 10), questionId, id]
-                        );
-                    }));
-                }
+      // ✅ Update questions if provided
+      if (question) {
+        const parsedQuestions = JSON.parse(question);
+        if (Array.isArray(parsedQuestions)) {
+          await Promise.all(parsedQuestions.map(async (q) => {
+            const { id: questionId, question_text, options, correct_option } = q;
+            if (!questionId || !options || options.length !== 4) {
+              console.warn("⚠ Skipping invalid question:", q);
+              return null;
             }
 
-            // ✅ Fetch updated questions
-            const [updatedQuestions] = await pool.query(
-                "SELECT id, question AS question_text, option_1, option_2, option_3, option_4, correct_option FROM bookquestions WHERE book_id = ?",
-                [id]
+            const optionTexts = options.map(option => option.text);
+
+            await pool.query(
+              `UPDATE bookquestions SET 
+                question = ?, 
+                option_1 = ?, 
+                option_2 = ?, 
+                option_3 = ?, 
+                option_4 = ?, 
+                correct_option = ? 
+              WHERE id = ? AND book_id = ?`,
+              [
+                question_text,
+                optionTexts[0],
+                optionTexts[1],
+                optionTexts[2],
+                optionTexts[3],
+                parseInt(correct_option, 10),
+                questionId,
+                id
+              ]
             );
-
-            const formattedQuestions = updatedQuestions.map(q => ({
-                id: q.id,
-                question_text: q.question_text,
-                options: [
-                    { text: q.option_1 },
-                    { text: q.option_2 },
-                    { text: q.option_3 },
-                    { text: q.option_4 }
-                ],
-                correct_option: q.correct_option
-            }));
-
-            return res.status(200).json({
-                message: "Book and question updated successfully",
-                data: {
-                    id,
-                    category_id: categoryIdNum,
-                    book_name,
-                    description,
-                    status: statusValue,
-                    image: imageUrl,
-                    audio_book_url: audioUrl,
-                    flip_book_url,
-                    author,
-                    question: formattedQuestions.length === 1 ? formattedQuestions[0] : formattedQuestions
-                }
-            });
-
-        } catch (error) {
-            console.error("❌ Error in editBook:", error);
-            return res.status(500).json({ message: "Internal server error", error: error.message });
+          }));
         }
-    });
+      }
+
+      // ✅ Fetch updated questions for response
+      const [updatedQuestions] = await pool.query(
+        `SELECT id, question AS question_text, option_1, option_2, option_3, option_4, correct_option 
+         FROM bookquestions WHERE book_id = ?`,
+        [id]
+      );
+
+      const formattedQuestions = updatedQuestions.map(q => ({
+        id: q.id,
+        question_text: q.question_text,
+        options: [
+          { text: q.option_1 },
+          { text: q.option_2 },
+          { text: q.option_3 },
+          { text: q.option_4 }
+        ],
+        correct_option: q.correct_option
+      }));
+
+      return res.status(200).json({
+        message: "Book and question updated successfully",
+        data: {
+          id,
+          category_id: categoryIdNum,
+          book_name,
+          description,
+          status: statusValue,
+          image: imageUrl,
+          audio_book_url: audioUrl,
+          flip_book_url,
+          author,
+          question: formattedQuestions.length === 1 ? formattedQuestions[0] : formattedQuestions
+        }
+      });
+
+    } catch (error) {
+      console.error("❌ Error in editBook:", error);
+      return res.status(500).json({ message: "Internal server error", error: error.message });
+    }
+  });
 };
 
 
