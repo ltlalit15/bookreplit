@@ -1374,6 +1374,11 @@ export const addBook = async (req, res) => {
         flip_book_url
       } = req.body;
 
+         const [existingBooks] = await pool.query("SELECT id FROM book WHERE book_name = ?", [book_name]);
+            if (existingBooks.length > 0) {
+                return res.status(400).json({ message: "Book with the same name already exists" });
+            }
+
       const statusValue = status || "not completed";
       const categoryIdNum = parseInt(category_id, 10);
       const flipBookUrl = flip_book_url || "";
