@@ -2361,6 +2361,8 @@ export const deleteBook = async (req, res) => {
         await pool.query(deleteQuery, [id]);
         await pool.query("DELETE FROM audio_progress WHERE book_id = ?  ", [id])
         await pool.query("DELETE FROM book_test_results WHERE book_id = ?  ", [id])
+         await pool.query("DELETE FROM reviews WHERE book_id = ?  ", [id])
+
         return res.status(200).json({
             message: "Book deleted successfully",
         });
@@ -2384,7 +2386,7 @@ export const UserDelete = async (req, res) => {
 
         const checkQueryss = "DELETE FROM audio_progress WHERE user_id = ?";
         await pool.query(checkQueryss, [id]);
-
+await pool.query("DELETE FROM reviews WHERE user_id = ?  ", [id])
 
         const checkQuerysss = "DELETE FROM book_test_results WHERE user_id = ?";
         await pool.query(checkQuerysss, [id]);
