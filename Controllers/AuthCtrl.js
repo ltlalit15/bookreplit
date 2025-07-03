@@ -2320,32 +2320,55 @@ export const getBookByCategoryId = async (req, res) => {
     }
 };
 
+// export const deleteBook = async (req, res) => {
+//     try {
+//         const { id } = req.params;
+
+//         // Check if the book exists
+//         const checkQuery = "SELECT * FROM book WHERE id = ?";
+//         const [existingBook] = await pool.query(checkQuery, [id]);
+
+//         if (existingBook.length === 0) {
+//             return res.status(404).json({ message: "No Book found" });
+//         }
+
+//         // Delete the book
+//         const deleteQuery = "DELETE FROM book WHERE id = ?";
+//         await pool.query(deleteQuery, [id]);
+
+//         return res.status(200).json({
+//             message: "Book deleted successfully",
+
+//         });
+//     } catch (error) {
+//         console.error("Error deleting book:", error);
+//         return res.status(500).json({ message: "Internal server error" });
+//     }
+// };
+
+
 export const deleteBook = async (req, res) => {
     try {
         const { id } = req.params;
-
         // Check if the book exists
         const checkQuery = "SELECT * FROM book WHERE id = ?";
         const [existingBook] = await pool.query(checkQuery, [id]);
-
         if (existingBook.length === 0) {
             return res.status(404).json({ message: "No Book found" });
         }
-
         // Delete the book
         const deleteQuery = "DELETE FROM book WHERE id = ?";
         await pool.query(deleteQuery, [id]);
-
+        await pool.query("DELETE FROM audio_progress WHERE book_id = ?  ", [id])
+        await pool.query("DELETE FROM book_test_results WHERE book_id = ?  ", [id])
         return res.status(200).json({
             message: "Book deleted successfully",
-
         });
     } catch (error) {
         console.error("Error deleting book:", error);
         return res.status(500).json({ message: "Internal server error" });
     }
 };
-
 
 export const UserDelete = async (req, res) => {
     try {
