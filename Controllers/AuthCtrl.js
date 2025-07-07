@@ -1493,6 +1493,13 @@ export const sanitizeURL = (url) => {
   }
 };
 
+export const uploadWithTimeout = (uploadPromise, timeout = 15000) => {
+  return Promise.race([
+    uploadPromise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timed out")), timeout))
+  ]);
+};
+
 
 export const addBook = async (req, res) => {
   upload.fields([
@@ -1520,7 +1527,6 @@ export const addBook = async (req, res) => {
         audio_book_url: audioFromClient
       } = req.body;
 
-      // Check for duplicate book
       const [existingBooks] = await pool.query("SELECT id FROM book WHERE book_name = ?", [book_name]);
       console.log("🔍 Existing book check result:", existingBooks);
       if (existingBooks.length > 0) {
@@ -1534,13 +1540,15 @@ export const addBook = async (req, res) => {
       let imageUrl = "";
       let audioUrl = "";
 
-      // ✅ Upload image to B2
       if (req.files["image"]?.length) {
         try {
           console.log("🖼️ Uploading image to B2...");
           const fileBuffer = req.files["image"][0].buffer;
           const originalName = req.files["image"][0].originalname;
-          imageUrl = await uploadToB2(fileBuffer, originalName, "books/images");
+          imageUrl = await uploadWithTimeout(
+            uploadToB2(fileBuffer, originalName, "books/images"),
+            15000
+          );
           console.log("✅ Image uploaded URL:", imageUrl);
         } catch (error) {
           console.error("❌ Image upload to B2 failed:", error);
@@ -1551,13 +1559,15 @@ export const addBook = async (req, res) => {
         console.log("📎 Image URL from client:", imageUrl);
       }
 
-      // ✅ Upload audio to B2
       if (req.files["audio_book_url"]?.length) {
         try {
           console.log("🎵 Uploading audio to B2...");
           const fileBuffer = req.files["audio_book_url"][0].buffer;
           const originalName = req.files["audio_book_url"][0].originalname;
-          audioUrl = await uploadToB2(fileBuffer, originalName, "books/audio");
+          audioUrl = await uploadWithTimeout(
+            uploadToB2(fileBuffer, originalName, "books/audio"),
+            15000
+          );
           console.log("✅ Audio uploaded URL:", audioUrl);
         } catch (error) {
           console.error("❌ Audio upload to B2 failed:", error);
@@ -1568,7 +1578,6 @@ export const addBook = async (req, res) => {
         console.log("📎 Audio URL from client:", audioUrl);
       }
 
-      // ✅ Insert book into DB
       console.log("📤 Inserting book into database...");
       const [bookResult] = await pool.query(
         "INSERT INTO book (category_id, book_name, description, status, image, audio_book_url, flip_book_url, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1579,7 +1588,6 @@ export const addBook = async (req, res) => {
       const bookId = bookResult.insertId;
       let formattedQuestions = [];
 
-      // ✅ Handle questions if present
       if (questions) {
         console.log("🧠 Parsing and inserting questions...");
         const parsedQuestions = JSON.parse(questions);
@@ -1612,7 +1620,6 @@ export const addBook = async (req, res) => {
         }
       }
 
-      // ✅ Final response
       console.log("✅ Sending success response...");
       return res.status(201).json({
         message: "Book and questions added successfully",
