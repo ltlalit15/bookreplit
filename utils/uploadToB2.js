@@ -1,11 +1,10 @@
-// src/utils/uploadToB2.js
-import b2 from '../Config/b2Config.js'; // ✅ Required
+import b2 from '../Config/b2Config.js';
 import { v4 as uuidv4 } from 'uuid';
 import mime from 'mime-types';
 
 export const uploadToB2 = async (fileBuffer, originalName, folder = '') => {
   try {
-    // ✅ Authorize with B2
+    // ✅ Authorize
     await b2.authorize();
 
     // ✅ Find bucket
@@ -17,16 +16,13 @@ export const uploadToB2 = async (fileBuffer, originalName, folder = '') => {
       throw new Error(`Bucket '${bucketName}' not found`);
     }
 
-    // ✅ Prepare file details
-
+    // ✅ Prepare file name and content type
     const encodedName = encodeURIComponent(originalName.trim());
     const uniqueFileName = `${uuidv4()}_${encodedName}`;
-    
-    // const uniqueFileName = `${uuidv4()}_${originalName}`;
     const fileName = folder ? `${folder}/${uniqueFileName}` : uniqueFileName;
     const contentType = mime.lookup(originalName) || 'application/octet-stream';
 
-    // ✅ Get upload URL & auth token
+    // ✅ Get upload URL
     const { data: uploadData } = await b2.getUploadUrl({ bucketId: bucket.bucketId });
 
     // ✅ Upload file
@@ -38,13 +34,11 @@ export const uploadToB2 = async (fileBuffer, originalName, folder = '') => {
       contentType,
     });
 
-    // ✅ Return public URL
-    return `https://f005.backblazeb2.com/file/${bucketName}/${fileName}`;
+    // ✅ Return encoded public URL
+    const encodedFullPath = encodeURIComponent(fileName);
+    return `https://f005.backblazeb2.com/file/${bucketName}/${encodedFullPath}`;
   } catch (error) {
     console.error("❌ uploadToB2 error:", error?.response?.data || error.message);
     throw new Error("File upload to Backblaze B2 failed");
   }
 };
-
-
-
