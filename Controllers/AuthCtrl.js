@@ -1539,9 +1539,9 @@ export const addBook = async (req, res) => {
                     return res.status(500).json({ message: "Image upload failed", error: error.message });
                 }
             }
-            else if (imageFromClient) {
-                imageUrl = sanitizeURL(imageFromClient);
-            }
+         else if (imageFromClient) {
+    imageUrl = sanitizeURL(imageFromClient.trim());
+}
 
             // ✅ Upload audio to Backblaze B2
             if (req.files["audio_book_url"]?.length) {
@@ -1554,9 +1554,9 @@ export const addBook = async (req, res) => {
                     return res.status(500).json({ message: "Audio upload failed", error: error.message });
                 }
             }
-            else if (audioFromClient) {
-                audioUrl = sanitizeURL(audioFromClient);
-            }
+        else if (audioFromClient) {
+    audioUrl = sanitizeURL(audioFromClient.trim());
+}
 
             // ✅ Insert book into MySQL
             const [bookResult] = await pool.query(
