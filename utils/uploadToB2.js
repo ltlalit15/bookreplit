@@ -19,10 +19,10 @@ export const uploadToB2 = async (fileBuffer, originalName, folder = '') => {
 
     // ✅ Prepare file details
 
-    const encodedName = encodeURIComponent(originalName.trim());
-    const uniqueFileName = `${uuidv4()}_${encodedName}`;
+    //const encodedName = encodeURIComponent(originalName.trim());
+    //const uniqueFileName = `${uuidv4()}_${encodedName}`;
     
-    // const uniqueFileName = `${uuidv4()}_${originalName}`;
+    const uniqueFileName = `${uuidv4()}_${originalName}`;
     const fileName = folder ? `${folder}/${uniqueFileName}` : uniqueFileName;
     const contentType = mime.lookup(originalName) || 'application/octet-stream';
 
