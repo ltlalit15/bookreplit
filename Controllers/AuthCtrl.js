@@ -1481,151 +1481,141 @@ export const getcategory = async (req, res) => {
 
 
 
-const sanitizeURL = (url) => {
-    if (!url) return "";
-    try {
-        const parts = url.split("/");
-        const filename = parts.pop();
-        const encodedFilename = encodeURIComponent(filename);
-        return [...parts, encodedFilename].join("/");
-    } catch (e) {
-        return url;
-    }
+export const sanitizeURL = (url) => {
+  if (!url) return "";
+  try {
+    const baseUrl = url.substring(0, url.lastIndexOf('/') + 1);
+    const fileName = url.substring(url.lastIndexOf('/') + 1);
+    const encodedFilename = encodeURIComponent(fileName);
+    return baseUrl + encodedFilename;
+  } catch (e) {
+    return url;
+  }
 };
+
 
 export const addBook = async (req, res) => {
-    upload.fields([
-        { name: "image", maxCount: 1 },
-        { name: "audio_book_url", maxCount: 1 }
-    ])(req, res, async (err) => {
-        if (err) {
-            return res.status(400).json({ message: "File upload failed", error: err.message });
-        }
+  upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "audio_book_url", maxCount: 1 }
+  ])(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ message: "File upload failed", error: err.message });
+    }
 
+    try {
+      const {
+        category_id,
+        book_name,
+        description,
+        status,
+        author,
+        questions,
+        flip_book_url,
+        image: imageFromClient,
+        audio_book_url: audioFromClient
+      } = req.body;
+
+      // Check for duplicate book
+      const [existingBooks] = await pool.query("SELECT id FROM book WHERE book_name = ?", [book_name]);
+      if (existingBooks.length > 0) {
+        return res.status(400).json({ message: "Book with the same name already exists" });
+      }
+
+      const statusValue = status || "not completed";
+      const categoryIdNum = parseInt(category_id, 10);
+      const flipBookUrl = flip_book_url || "";
+
+      let imageUrl = "";
+      let audioUrl = "";
+
+      // ✅ Upload image to B2
+      if (req.files["image"]?.length) {
         try {
-            const {
-                category_id,
-                book_name,
-                description,
-                status,
-                author,
-                questions,
-                flip_book_url,
-                image: imageFromClient,
-                audio_book_url: audioFromClient
-            } = req.body;
-
-            const [existingBooks] = await pool.query("SELECT id FROM book WHERE book_name = ?", [book_name]);
-            if (existingBooks.length > 0) {
-                return res.status(400).json({ message: "Book with the same name already exists" });
-            }
-
-
-            const statusValue = status || "not completed";
-            const categoryIdNum = parseInt(category_id, 10);
-            const flipBookUrl = flip_book_url || "";
-
-            let imageUrl = "";
-            let audioUrl = "";
-
-            // ✅ Upload image to Backblaze B2
-            if (req.files["image"]?.length) {
-                try {
-                    const fileBuffer = req.files["image"][0].buffer;
-                    const originalName = req.files["image"][0].originalname;
-                    imageUrl = await uploadToB2(fileBuffer, originalName, "books/images");
-                } catch (error) {
-                    console.error("Image upload to B2 failed:", error);
-                    return res.status(500).json({ message: "Image upload failed", error: error.message });
-                }
-            }
-         else if (imageFromClient) {
-    imageUrl = sanitizeURL(imageFromClient.trim());
-}
-
-            // ✅ Upload audio to Backblaze B2
-            if (req.files["audio_book_url"]?.length) {
-                try {
-                    const fileBuffer = req.files["audio_book_url"][0].buffer;
-                    const originalName = req.files["audio_book_url"][0].originalname;
-                    audioUrl = await uploadToB2(fileBuffer, originalName, "books/audio");
-                } catch (error) {
-                    console.error("Audio upload to B2 failed:", error);
-                    return res.status(500).json({ message: "Audio upload failed", error: error.message });
-                }
-            }
-        else if (audioFromClient) {
-    audioUrl = sanitizeURL(audioFromClient.trim());
-}
-
-            // ✅ Insert book into MySQL
-            const [bookResult] = await pool.query(
-                "INSERT INTO book (category_id, book_name, description, status, image, audio_book_url, flip_book_url, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                [categoryIdNum, book_name, description, statusValue, imageUrl, audioUrl, flipBookUrl, author]
-            );
-
-            const bookId = bookResult.insertId;
-            let formattedQuestions = [];
-
-            // ✅ EXACT QUESTION INSERTION LOGIC (as you wrote it)
-            if (questions) {
-                const parsedQuestions = JSON.parse(questions);
-                if (Array.isArray(parsedQuestions)) {
-                    const questionInsertPromises = parsedQuestions.map(async (question) => {
-                        const { question_text, options, correct_option, qustionexplanation } = question;
-                        if (!options || options.length !== 4) {
-                            throw new Error("Each question must have exactly 4 options.");
-                        }
-                        const optionTexts = options.map(option => option.text);
-                        const [questionResult] = await pool.query(
-                            "INSERT INTO bookquestions (book_id, question, option_1, option_2, option_3, option_4, correct_option, qustionexplanation) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                            [bookId, question_text, optionTexts[0], optionTexts[1], optionTexts[2], optionTexts[3], correct_option, qustionexplanation || ""]
-                        );
-                        return {
-                            id: questionResult.insertId,
-                            question_text,
-                            options: [
-                                { text: optionTexts[0] },
-                                { text: optionTexts[1] },
-                                { text: optionTexts[2] },
-                                { text: optionTexts[3] }
-                            ],
-                            correct_option,
-                            qustionexplanation: qustionexplanation || ""
-                        };
-                    });
-
-                    formattedQuestions = await Promise.all(questionInsertPromises);
-                }
-            }
-
-            // ✅ Response
-            return res.status(201).json({
-                message: "Book and questions added successfully",
-                data: {
-                    id: bookId,
-                    category_id: categoryIdNum,
-                    book_name,
-                    description,
-                    status: statusValue,
-                    image: imageUrl,
-                    audio_book_url: audioUrl,
-                    flip_book_url: flipBookUrl,
-                    author,
-                    questions: formattedQuestions
-                }
-            });
-
+          const fileBuffer = req.files["image"][0].buffer;
+          const originalName = req.files["image"][0].originalname;
+          imageUrl = await uploadToB2(fileBuffer, originalName, "books/images");
         } catch (error) {
-            console.error("❌ Error adding book:", error);
-            return res.status(500).json({
-                message: "Internal server error",
-                error: error.message
-            });
+          console.error("Image upload to B2 failed:", error);
+          return res.status(500).json({ message: "Image upload failed", error: error.message });
         }
-    });
-};
+      } else if (imageFromClient) {
+        imageUrl = sanitizeURL(imageFromClient.trim());
+      }
 
+      // ✅ Upload audio to B2
+      if (req.files["audio_book_url"]?.length) {
+        try {
+          const fileBuffer = req.files["audio_book_url"][0].buffer;
+          const originalName = req.files["audio_book_url"][0].originalname;
+          audioUrl = await uploadToB2(fileBuffer, originalName, "books/audio");
+        } catch (error) {
+          console.error("Audio upload to B2 failed:", error);
+          return res.status(500).json({ message: "Audio upload failed", error: error.message });
+        }
+      } else if (audioFromClient) {
+        audioUrl = sanitizeURL(audioFromClient.trim());
+      }
+
+      // ✅ Insert book into DB
+      const [bookResult] = await pool.query(
+        "INSERT INTO book (category_id, book_name, description, status, image, audio_book_url, flip_book_url, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [categoryIdNum, book_name, description, statusValue, imageUrl, audioUrl, flipBookUrl, author]
+      );
+
+      const bookId = bookResult.insertId;
+      let formattedQuestions = [];
+
+      // ✅ Handle questions if present
+      if (questions) {
+        const parsedQuestions = JSON.parse(questions);
+        if (Array.isArray(parsedQuestions)) {
+          const questionInsertPromises = parsedQuestions.map(async (question) => {
+            const { question_text, options, correct_option, qustionexplanation } = question;
+            if (!options || options.length !== 4) {
+              throw new Error("Each question must have exactly 4 options.");
+            }
+            const optionTexts = options.map(opt => opt.text);
+            const [questionResult] = await pool.query(
+              "INSERT INTO bookquestions (book_id, question, option_1, option_2, option_3, option_4, correct_option, qustionexplanation) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+              [bookId, question_text, optionTexts[0], optionTexts[1], optionTexts[2], optionTexts[3], correct_option, qustionexplanation || ""]
+            );
+            return {
+              id: questionResult.insertId,
+              question_text,
+              options: optionTexts.map(text => ({ text })),
+              correct_option,
+              qustionexplanation: qustionexplanation || ""
+            };
+          });
+
+          formattedQuestions = await Promise.all(questionInsertPromises);
+        }
+      }
+
+      // ✅ Final response
+      return res.status(201).json({
+        message: "Book and questions added successfully",
+        data: {
+          id: bookId,
+          category_id: categoryIdNum,
+          book_name,
+          description,
+          status: statusValue,
+          image: imageUrl,
+          audio_book_url: audioUrl,
+          flip_book_url: flipBookUrl,
+          author,
+          questions: formattedQuestions
+        }
+      });
+
+    } catch (error) {
+      console.error("❌ Error adding book:", error);
+      return res.status(500).json({ message: "Internal server error", error: error.message });
+    }
+  });
+};
 
 
 // export const saveOrUpdateAudioProgress = async (req, res) => {
