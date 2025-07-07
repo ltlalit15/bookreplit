@@ -1500,10 +1500,14 @@ export const addBook = async (req, res) => {
     { name: "audio_book_url", maxCount: 1 }
   ])(req, res, async (err) => {
     if (err) {
+      console.error("❌ Multer error:", err);
       return res.status(400).json({ message: "File upload failed", error: err.message });
     }
 
     try {
+      console.log("📥 Incoming request body:", req.body);
+      console.log("📦 Incoming files:", req.files);
+
       const {
         category_id,
         book_name,
@@ -1518,6 +1522,7 @@ export const addBook = async (req, res) => {
 
       // Check for duplicate book
       const [existingBooks] = await pool.query("SELECT id FROM book WHERE book_name = ?", [book_name]);
+      console.log("🔍 Existing book check result:", existingBooks);
       if (existingBooks.length > 0) {
         return res.status(400).json({ message: "Book with the same name already exists" });
       }
@@ -1532,54 +1537,67 @@ export const addBook = async (req, res) => {
       // ✅ Upload image to B2
       if (req.files["image"]?.length) {
         try {
+          console.log("🖼️ Uploading image to B2...");
           const fileBuffer = req.files["image"][0].buffer;
           const originalName = req.files["image"][0].originalname;
           imageUrl = await uploadToB2(fileBuffer, originalName, "books/images");
+          console.log("✅ Image uploaded URL:", imageUrl);
         } catch (error) {
-          console.error("Image upload to B2 failed:", error);
+          console.error("❌ Image upload to B2 failed:", error);
           return res.status(500).json({ message: "Image upload failed", error: error.message });
         }
       } else if (imageFromClient) {
         imageUrl = sanitizeURL(imageFromClient.trim());
+        console.log("📎 Image URL from client:", imageUrl);
       }
 
       // ✅ Upload audio to B2
       if (req.files["audio_book_url"]?.length) {
         try {
+          console.log("🎵 Uploading audio to B2...");
           const fileBuffer = req.files["audio_book_url"][0].buffer;
           const originalName = req.files["audio_book_url"][0].originalname;
           audioUrl = await uploadToB2(fileBuffer, originalName, "books/audio");
+          console.log("✅ Audio uploaded URL:", audioUrl);
         } catch (error) {
-          console.error("Audio upload to B2 failed:", error);
+          console.error("❌ Audio upload to B2 failed:", error);
           return res.status(500).json({ message: "Audio upload failed", error: error.message });
         }
       } else if (audioFromClient) {
         audioUrl = sanitizeURL(audioFromClient.trim());
+        console.log("📎 Audio URL from client:", audioUrl);
       }
 
       // ✅ Insert book into DB
+      console.log("📤 Inserting book into database...");
       const [bookResult] = await pool.query(
         "INSERT INTO book (category_id, book_name, description, status, image, audio_book_url, flip_book_url, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         [categoryIdNum, book_name, description, statusValue, imageUrl, audioUrl, flipBookUrl, author]
       );
+      console.log("✅ Book inserted with ID:", bookResult.insertId);
 
       const bookId = bookResult.insertId;
       let formattedQuestions = [];
 
       // ✅ Handle questions if present
       if (questions) {
+        console.log("🧠 Parsing and inserting questions...");
         const parsedQuestions = JSON.parse(questions);
         if (Array.isArray(parsedQuestions)) {
-          const questionInsertPromises = parsedQuestions.map(async (question) => {
+          const questionInsertPromises = parsedQuestions.map(async (question, index) => {
             const { question_text, options, correct_option, qustionexplanation } = question;
+            console.log(`➡️ Question ${index + 1}:`, question_text);
+
             if (!options || options.length !== 4) {
               throw new Error("Each question must have exactly 4 options.");
             }
+
             const optionTexts = options.map(opt => opt.text);
             const [questionResult] = await pool.query(
               "INSERT INTO bookquestions (book_id, question, option_1, option_2, option_3, option_4, correct_option, qustionexplanation) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
               [bookId, question_text, optionTexts[0], optionTexts[1], optionTexts[2], optionTexts[3], correct_option, qustionexplanation || ""]
             );
+
             return {
               id: questionResult.insertId,
               question_text,
@@ -1590,10 +1608,12 @@ export const addBook = async (req, res) => {
           });
 
           formattedQuestions = await Promise.all(questionInsertPromises);
+          console.log("✅ All questions inserted.");
         }
       }
 
       // ✅ Final response
+      console.log("✅ Sending success response...");
       return res.status(201).json({
         message: "Book and questions added successfully",
         data: {
