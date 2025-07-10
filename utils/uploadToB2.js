@@ -45,3 +45,17 @@ export const uploadToB2 = async (fileBuffer, originalName, folder = '') => {
     throw new Error("File upload to Backblaze B2 failed");
   }
 };
+
+
+
+// ✅ CORS Rules (for use with CLI or direct API call if needed)
+export const corsRules = {
+  CORSRules: [
+    {
+      AllowedHeaders: ["*"],
+      AllowedMethods: ["GET", "HEAD"],
+      AllowedOrigins: ["*"],
+      MaxAgeSeconds: 3600
+    }
+  ]
+};
