@@ -47,6 +47,19 @@ export const uploadToB2 = async (fileBuffer, originalName, folder = '') => {
 };
 
 
+// ✅ CORS Rules (for use with CLI or direct API call if needed)
+export const corsRules = {
+  CORSRules: [
+    {
+      AllowedHeaders: ["*"],
+      AllowedMethods: ["GET", "HEAD"],
+      AllowedOrigins: ["*"],
+      MaxAgeSeconds: 3600
+    }
+  ]
+};
+
+
 
 
 
