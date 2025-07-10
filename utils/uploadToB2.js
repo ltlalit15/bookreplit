@@ -53,7 +53,7 @@ export const corsRules = {
     {
       AllowedHeaders: ["*"],
       AllowedMethods: ["GET", "HEAD"],
-      AllowedOrigins: ["*"],
+      AllowedOrigins: ["https://smartlifeacademy.io"],
       MaxAgeSeconds: 3600
     }
   ]
