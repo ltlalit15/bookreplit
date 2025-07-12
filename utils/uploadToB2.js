@@ -18,10 +18,6 @@ export const uploadToB2 = async (fileBuffer, originalName, folder = '') => {
     }
 
     // ✅ Prepare file details
-
-    //const encodedName = encodeURIComponent(originalName.trim());
-    //const uniqueFileName = `${uuidv4()}_${encodedName}`;
-    
     const uniqueFileName = `${uuidv4()}_${originalName}`;
     const fileName = folder ? `${folder}/${uniqueFileName}` : uniqueFileName;
     const contentType = mime.lookup(originalName) || 'application/octet-stream';
@@ -38,8 +34,15 @@ export const uploadToB2 = async (fileBuffer, originalName, folder = '') => {
       contentType,
     });
 
-    // ✅ Return public URL
-    return `https://f005.backblazeb2.com/file/${bucketName}/${fileName}`;
+    // ✅ Return BunnyCDN Public URL (instead of direct Backblaze URL)
+    return `https://smartlifeacademy.b-cdn.net/${fileName}`;
+
+    // 🔁 Optional: If you also want to return original Backblaze URL:
+    // return {
+    //   backblazeUrl: `https://f005.backblazeb2.com/file/${bucketName}/${fileName}`,
+    //   cdnUrl: `https://smartlifeacademy.b-cdn.net/${fileName}`
+    // };
+
   } catch (error) {
     console.error("❌ uploadToB2 error:", error?.response?.data || error.message);
     throw new Error("File upload to Backblaze B2 failed");
@@ -58,8 +61,3 @@ export const corsRules = {
     }
   ]
 };
-
-
-
-
-
