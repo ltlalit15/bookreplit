@@ -35,7 +35,7 @@ export const uploadToB2 = async (fileBuffer, originalName, folder = '') => {
     });
 
     // ✅ Return BunnyCDN Public URL (instead of direct Backblaze URL)
-    return `https://smartlifeacademy.b-cdn.net/${fileName}`;
+    return `https://smartlifeacademys.b-cdn.net/${fileName}`;
 
     // 🔁 Optional: If you also want to return original Backblaze URL:
     // return {
